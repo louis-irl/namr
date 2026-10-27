@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: CC0-1.0
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Namr
+GenericName=Bulk File Renamer
+Comment=Bulk rename files and folders using Find & Replace and pattern rules
+Exec=namr %F
+Icon=fans.bingus.namr
+Terminal=false
+Categories=Qt;KDE;Utility;FileTools;
+MimeType=inode/directory;application/octet-stream;
+Keywords=rename;bulk;batch;files;folders;find;replace;
+StartupNotify=true
+StartupWMClass=fans.bingus.namr
+

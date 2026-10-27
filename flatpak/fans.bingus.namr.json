@@ -1,0 +1,44 @@
+{
+    "id": "fans.bingus.namr",
+    "runtime": "org.kde.Platform",
+    "runtime-version": "6.11",
+    "sdk": "org.kde.Sdk",
+    "base": "io.qt.PySide.BaseApp",
+    "base-version": "6.11",
+    "command": "namr",
+    "finish-args": [
+        "--share=ipc",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--device=dri",
+        "--filesystem=host",
+        "--filesystem=/nas"
+    ],
+    "modules": [
+        {
+            "name": "namr",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --no-index --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .",
+                "install -Dm644 data/fans.bingus.namr.desktop ${FLATPAK_DEST}/share/applications/fans.bingus.namr.desktop",
+                "install -Dm644 data/fans.bingus.namr.metainfo.xml ${FLATPAK_DEST}/share/metainfo/fans.bingus.namr.metainfo.xml",
+                "install -Dm644 data/fans.bingus.namr.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/fans.bingus.namr.svg"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "..",
+                    "skip": [
+                        ".flatpak-builder",
+                        "build-dir",
+                        "repo",
+                        ".venv",
+                        "venv",
+                        ".git"
+                    ]
+                }
+            ]
+        }
+    ]
+}
+

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<component type="desktop-application">
+  <id>fans.bingus.namr</id>
+  <name>Namr</name>
+  <summary>Bulk rename files and directories</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="fans.bingus">
+    <name>Louis</name>
+  </developer>
+  <url type="homepage">https://github.com/louis-irl/namr</url>
+  <url type="bugtracker">https://github.com/louis-irl/namr/issues</url>
+  <url type="vcs-browser">https://github.com/louis-irl/namr</url>
+  <description>
+    <p>
+      Namr is a modern KDE Kirigami application for bulk renaming files and folders.
+      It features live diff previews, conflict detection, recursive directory scanning,
+      and full undo support.
+    </p>
+  </description>
+  <launchable type="desktop-id">fans.bingus.namr.desktop</launchable>
+  <provides>
+    <binary>namr</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-10-26" />
+  </releases>
+</component>
+

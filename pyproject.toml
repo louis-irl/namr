@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "namr"
+version = "0.1.0"
+description = "Modern KDE Kirigami bulk file and directory renamer written in Python and Qt6"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "Louis" }
+]
+dependencies = [
+    "PySide6>=6.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/louis-irl/namr"
+Repository = "https://github.com/louis-irl/namr"
+Issues = "https://github.com/louis-irl/namr/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+namr = "namr.main:main"
+
+[project.gui-scripts]
+namr-gui = "namr.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"namr.qml" = ["*.qml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
