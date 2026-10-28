@@ -362,56 +362,60 @@ class RenamerController(QObject):
 
     # --- Rule properties ---
 
-    @Property(str, notify=ruleChanged)
-    def findText(self) -> str:
+    def _get_find_text(self) -> str:
         return self._rule.find_text
 
-    @findText.setter
-    def findText(self, value: str) -> None:
+    def _set_find_text(self, value: str) -> None:
         if self._rule.find_text != value:
             self._rule.find_text = value
             self.ruleChanged.emit()
             self._recalculate()
 
-    @Property(str, notify=ruleChanged)
-    def replaceText(self) -> str:
+    findText = Property(str, _get_find_text, _set_find_text, notify=ruleChanged)
+
+    def _get_replace_text(self) -> str:
         return self._rule.replace_text
 
-    @replaceText.setter
-    def replaceText(self, value: str) -> None:
+    def _set_replace_text(self, value: str) -> None:
         if self._rule.replace_text != value:
             self._rule.replace_text = value
             self.ruleChanged.emit()
             self._recalculate()
 
-    @Property(bool, notify=ruleChanged)
-    def caseSensitive(self) -> bool:
+    replaceText = Property(
+        str, _get_replace_text, _set_replace_text, notify=ruleChanged
+    )
+
+    def _get_case_sensitive(self) -> bool:
         return self._rule.case_sensitive
 
-    @caseSensitive.setter
-    def caseSensitive(self, value: bool) -> None:
+    def _set_case_sensitive(self, value: bool) -> None:
         if self._rule.case_sensitive != value:
             self._rule.case_sensitive = value
             self.ruleChanged.emit()
             self._recalculate()
 
-    @Property(bool, notify=ruleChanged)
-    def includeExtension(self) -> bool:
+    caseSensitive = Property(
+        bool, _get_case_sensitive, _set_case_sensitive, notify=ruleChanged
+    )
+
+    def _get_include_extension(self) -> bool:
         return self._rule.include_extension
 
-    @includeExtension.setter
-    def includeExtension(self, value: bool) -> None:
+    def _set_include_extension(self, value: bool) -> None:
         if self._rule.include_extension != value:
             self._rule.include_extension = value
             self.ruleChanged.emit()
             self._recalculate()
 
-    @Property(str, notify=ruleChanged)
-    def targetScope(self) -> str:
+    includeExtension = Property(
+        bool, _get_include_extension, _set_include_extension, notify=ruleChanged
+    )
+
+    def _get_target_scope(self) -> str:
         return self._rule.target_scope.value
 
-    @targetScope.setter
-    def targetScope(self, value: str) -> None:
+    def _set_target_scope(self, value: str) -> None:
         try:
             scope = TargetScope(value)
         except ValueError:
@@ -421,12 +425,14 @@ class RenamerController(QObject):
             self.ruleChanged.emit()
             self._recalculate()
 
-    @Property(bool, notify=ruleChanged)
-    def recursiveScan(self) -> bool:
+    targetScope = Property(
+        str, _get_target_scope, _set_target_scope, notify=ruleChanged
+    )
+
+    def _get_recursive_scan(self) -> bool:
         return self._recursive
 
-    @recursiveScan.setter
-    def recursiveScan(self, value: bool) -> None:
+    def _set_recursive_scan(self, value: bool) -> None:
         if self._recursive != value:
             self._recursive = value
             self.ruleChanged.emit()
@@ -439,26 +445,37 @@ class RenamerController(QObject):
                 if dir_paths:
                     self.addPaths(dir_paths)
 
-    @Property(bool, notify=ruleChanged)
-    def strictCrossPlatform(self) -> bool:
+    recursiveScan = Property(
+        bool, _get_recursive_scan, _set_recursive_scan, notify=ruleChanged
+    )
+
+    def _get_strict_cross_platform(self) -> bool:
         return self._strict_cross_platform
 
-    @strictCrossPlatform.setter
-    def strictCrossPlatform(self, value: bool) -> None:
+    def _set_strict_cross_platform(self, value: bool) -> None:
         if self._strict_cross_platform != value:
             self._strict_cross_platform = value
             self.ruleChanged.emit()
             self._recalculate()
 
-    @Property(bool, notify=ruleChanged)
-    def showChangedOnly(self) -> bool:
+    strictCrossPlatform = Property(
+        bool,
+        _get_strict_cross_platform,
+        _set_strict_cross_platform,
+        notify=ruleChanged,
+    )
+
+    def _get_show_changed_only(self) -> bool:
         return self._model.changed_only
 
-    @showChangedOnly.setter
-    def showChangedOnly(self, value: bool) -> None:
+    def _set_show_changed_only(self, value: bool) -> None:
         if self._model.changed_only != value:
             self._model.set_changed_only(value)
             self.ruleChanged.emit()
+
+    showChangedOnly = Property(
+        bool, _get_show_changed_only, _set_show_changed_only, notify=ruleChanged
+    )
 
     # --- Summary statistics ---
 
