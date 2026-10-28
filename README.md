@@ -153,4 +153,4 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`). AppStream metadata in [`data/fans.bingus.namr.metainfo.xml`](data/fans.bingus.namr.metainfo.xml) is dedicated to the public domain under `CC0-1.0`.
+This project is dedicated to the **public domain** under [The Unlicense](LICENSE) (`Unlicense`).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: Unlicense
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
@@ -1196,7 +1196,7 @@ Kirigami.ApplicationWindow {
                     wrapMode: Text.WordWrap
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                     opacity: 0.8
-                    text: qsTr("License: GNU General Public License v3.0 or later (GPL-3.0-or-later)")
+                    text: qsTr("License: Public Domain (The Unlicense)")
                 }
 
                 QQC2.Label {

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Modern KDE Kirigami bulk file and directory renamer written in Python and Qt6"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "GPL-3.0-or-later" }
+license = { text = "Unlicense" }
 authors = [
     { name = "Louis" }
 ]

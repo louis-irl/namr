@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: Unlicense
 """Core rename engine, rule protocol, conflict validation, and safe execution."""
 
 from __future__ import annotations

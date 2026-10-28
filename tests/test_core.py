@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: Unlicense
 """Unit tests for namr.core and namr.controller."""
 
 from __future__ import annotations

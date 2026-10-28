@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: Unlicense
 """Application entry point for Namr."""
 
 from __future__ import annotations
