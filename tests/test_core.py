@@ -119,6 +119,36 @@ class TestValidationAndConflicts(unittest.TestCase):
             self.assertIn("#e74c3c", items[0].diff_html)
             self.assertNotIn("#2ecc71", items[0].diff_html)
 
+    def test_case_insensitive_conflict_detection_when_strict(self) -> None:
+        with TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            p1 = base / "alpha.txt"
+            p2 = base / "beta.txt"
+            p1.touch()
+            p2.touch()
+
+            # Renaming alpha.txt -> Beta.txt collides with beta.txt when strict_cross_platform=True
+            items = [
+                RenameItem(source_path=p1, is_dir=False),
+                RenameItem(source_path=p2, is_dir=False),
+            ]
+            rule = FindReplaceRule(find_text="alpha", replace_text="Beta")
+            evaluate_preview(items, rule, strict_cross_platform=True)
+            self.assertEqual(items[0].status, ItemStatus.CONFLICT)
+            self.assertEqual(items[1].status, ItemStatus.CONFLICT)
+
+            # Single-item case-only rename (alpha.txt -> Alpha.txt) is READY, not a conflict with itself
+            single = [RenameItem(source_path=p1, is_dir=False)]
+            evaluate_preview(
+                single,
+                FindReplaceRule(find_text="alpha", replace_text="Alpha"),
+                strict_cross_platform=True,
+            )
+            self.assertEqual(single[0].status, ItemStatus.READY)
+            res = execute_batch(single)
+            self.assertTrue(res.ok)
+            self.assertEqual(single[0].source_path.name, "Alpha.txt")
+
 
 class TestBatchExecutionAndUndo(unittest.TestCase):
     def test_execute_and_undo_with_nested_directories(self) -> None:
@@ -146,6 +176,40 @@ class TestBatchExecutionAndUndo(unittest.TestCase):
             self.assertTrue(undo_res.ok)
             self.assertEqual(undo_res.success_count, 2)
             self.assertTrue((base / "old_project" / "old_notes.txt").exists())
+
+    def test_case_only_rename_with_nested_directories(self) -> None:
+        from unittest.mock import patch
+
+        with TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            parent_dir = base / "ExclusiVe Cast Commentary"
+            parent_dir.mkdir()
+            child_file = parent_dir / "S00E05 - IneffectiVe Assistance.mkv"
+            child_file.write_text("video")
+
+            collected = collect_paths([parent_dir], recursive=True)
+            items = [RenameItem(source_path=p, is_dir=is_d) for p, is_d in collected]
+
+            rule = FindReplaceRule(find_text="V", replace_text="v", case_sensitive=True)
+            evaluate_preview(items, rule)
+
+            # Simulate Windows/macOS where case-only renames use two-phase temp swaps
+            with patch("namr.core.sys.platform", "win32"):
+                result = execute_batch(items)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.success_count, 2)
+            self.assertTrue(
+                (base / "Exclusive Cast Commentary" / "S00E05 - Ineffective Assistance.mkv").exists()
+            )
+
+            assert result.record is not None
+            undo_res = undo_batch(result.record, items)
+            self.assertTrue(undo_res.ok)
+            self.assertEqual(undo_res.success_count, 2)
+            self.assertTrue(
+                (base / "ExclusiVe Cast Commentary" / "S00E05 - IneffectiVe Assistance.mkv").exists()
+            )
 
     def test_swap_cycle_in_same_directory(self) -> None:
         """Renaming a_1 -> a_2 while a_2 is also in the batch being renamed to a_22."""

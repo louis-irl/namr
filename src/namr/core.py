@@ -8,6 +8,7 @@ from enum import Enum
 import html
 import os
 from pathlib import Path
+import stat
 import sys
 from typing import Iterable, Protocol, runtime_checkable
 
@@ -260,6 +261,19 @@ class BatchResult:
         return len(self.errors) == 0
 
 
+def _is_hidden_entry(path: Path, name: str) -> bool:
+    """Return True if a file or directory is hidden on Unix (dotfile) or Windows."""
+    if name.startswith("."):
+        return True
+    if sys.platform.startswith("win"):
+        try:
+            attrs = getattr(path.stat(), "st_file_attributes", 0)
+            return bool(attrs & stat.FILE_ATTRIBUTE_HIDDEN)
+        except OSError:
+            return False
+    return False
+
+
 def collect_paths(
     inputs: Iterable[str | Path],
     recursive: bool = True,
@@ -294,8 +308,12 @@ def collect_paths(
             for root, dirs, files in os.walk(resolved_root):
                 root_path = Path(root)
                 if not include_hidden:
-                    dirs[:] = [d for d in dirs if not d.startswith(".")]
-                    files = [f for f in files if not f.startswith(".")]
+                    dirs[:] = [
+                        d for d in dirs if not _is_hidden_entry(root_path / d, d)
+                    ]
+                    files = [
+                        f for f in files if not _is_hidden_entry(root_path / f, f)
+                    ]
                 dirs.sort()
                 files.sort()
                 for d in dirs:
@@ -313,8 +331,20 @@ def evaluate_preview(
 ) -> None:
     """Update new_name, diff_html, status, and error_message on all items in-place."""
     # First pass: compute candidate names and validate syntax
-    target_counts: dict[Path, int] = {}
+    case_fold_targets = (
+        strict_cross_platform
+        or sys.platform.startswith("win")
+        or sys.platform == "darwin"
+    )
+
+    def _target_key(parent: Path, name: str) -> tuple[Path, str]:
+        return (parent, name.casefold() if case_fold_targets else name)
+
+    target_counts: dict[tuple[Path, str], int] = {}
     source_set: set[Path] = {item.source_path for item in items}
+    source_keys: set[tuple[Path, str]] = {
+        _target_key(item.parent_dir, item.original_name) for item in items
+    }
     has_fast_eval = hasattr(rule, "evaluate_item")
 
     for idx, item in enumerate(items):
@@ -325,7 +355,8 @@ def evaluate_preview(
             item.diff_html = escaped
             item.status = ItemStatus.UNCHANGED
             item.error_message = ""
-            target_counts[item.source_path] = target_counts.get(item.source_path, 0) + 1
+            key = _target_key(item.parent_dir, item.original_name)
+            target_counts[key] = target_counts.get(key, 0) + 1
             continue
 
         if has_fast_eval:
@@ -356,22 +387,25 @@ def evaluate_preview(
             item.status = ItemStatus.READY
             item.error_message = ""
 
-        target_counts[item.target_path] = target_counts.get(item.target_path, 0) + 1
+        key = _target_key(item.parent_dir, item.new_name)
+        target_counts[key] = target_counts.get(key, 0) + 1
 
     # Second pass: check for duplicate targets within batch or existing files on disk
     for item in items:
+        key = _target_key(item.parent_dir, item.new_name)
         if item.status in (ItemStatus.INVALID, ItemStatus.UNCHANGED) and (
-            target_counts.get(item.target_path, 0) <= 1
+            target_counts.get(key, 0) <= 1
         ):
             continue
 
         target = item.target_path
-        if target_counts.get(target, 0) > 1:
+        if target_counts.get(key, 0) > 1:
             item.status = ItemStatus.CONFLICT
             item.error_message = "Duplicate target name"
         elif (
             item.status == ItemStatus.READY
             and target not in source_set
+            and key not in source_keys
             and target.exists()
         ):
             item.status = ItemStatus.CONFLICT
@@ -401,72 +435,98 @@ def execute_batch(items: list[RenameItem]) -> BatchResult:
             errors=[(b.source_path, b.error_message or "Conflict detected") for b in blocking],
         )
 
-    # Sort deepest paths first so renaming a directory doesn't invalidate child paths
-    ordered = sorted(ready_items, key=lambda x: x.depth, reverse=True)
+    # Group ready items by parent directory and sort groups deepest-first.
+    # Executing Phase 1 + Phase 2 per directory ensures all children inside a directory
+    # finish both phases before their parent directory is ever renamed or moved to a temp path.
+    dir_groups: dict[Path, list[RenameItem]] = {}
+    for item in ready_items:
+        dir_groups.setdefault(item.parent_dir, []).append(item)
+
+    sorted_parents = sorted(
+        dir_groups.keys(), key=lambda p: len(p.parts), reverse=True
+    )
 
     result = BatchResult(record=BatchRecord())
-    source_paths = {item.source_path for item in ordered}
+    dir_renames: list[tuple[Path, Path]] = []
+    needs_case_temp = sys.platform.startswith("win") or sys.platform == "darwin"
 
-    temp_map: list[tuple[RenameItem, Path, Path, Path]] = []
-    errors: list[tuple[Path, str]] = []
+    for parent in sorted_parents:
+        group = dir_groups[parent]
+        source_paths = {item.source_path for item in group}
+        target_paths = {item.target_path for item in group}
+        overlap_paths = source_paths & target_paths
 
-    # Phase 1: move any item that participates in a source/target overlap to a unique temp path
-    target_paths = {item.target_path for item in ordered}
-    overlap_paths = source_paths & target_paths
-    for idx, item in enumerate(ordered):
-        src = item.source_path
-        dst = item.target_path
-        if (src in overlap_paths or dst in overlap_paths) and src.parent == dst.parent:
-            tmp = src.parent / f".namr_tmp_{os.getpid()}_{idx}_{src.name}"
+        temp_map: list[tuple[RenameItem, Path, Path, Path]] = []
+        group_errors: list[tuple[Path, str]] = []
+
+        # Phase 1: move any sibling in this directory that participates in a source/target
+        # overlap (or a case-only rename on Windows/macOS) to a unique temp path
+        for idx, item in enumerate(group):
+            src = item.source_path
+            dst = item.target_path
+            is_case_only_rename = (
+                src.name != dst.name
+                and src.name.casefold() == dst.name.casefold()
+            )
+            has_sibling_overlap = not is_case_only_rename and (
+                src in overlap_paths or dst in overlap_paths
+            )
+            if has_sibling_overlap or (needs_case_temp and is_case_only_rename):
+                tmp = src.parent / f".namr_tmp_{os.getpid()}_{idx}_{src.name}"
+                try:
+                    src.rename(tmp)
+                    temp_map.append((item, src, tmp, dst))
+                except OSError as exc:
+                    if is_case_only_rename and not has_sibling_overlap:
+                        # Fallback to direct rename in Phase 2 (e.g. if NAS/mount blocks dotfiles)
+                        temp_map.append((item, src, src, dst))
+                    else:
+                        item.status = ItemStatus.ERROR
+                        item.error_message = str(exc)
+                        group_errors.append((src, str(exc)))
+            else:
+                temp_map.append((item, src, src, dst))
+
+        if group_errors:
+            # Roll back any temp renames in this directory group
+            for _item, orig_src, cur_path, _dst in reversed(temp_map):
+                if cur_path != orig_src and cur_path.exists():
+                    try:
+                        cur_path.rename(orig_src)
+                    except OSError:
+                        pass
+            result.errors.extend(group_errors)
+            continue
+
+        # Phase 2: move items in this directory to their final destination
+        for item, orig_src, cur_path, dst in temp_map:
             try:
-                src.rename(tmp)
-                temp_map.append((item, src, tmp, dst))
+                cur_path.rename(dst)
+                if result.record is not None:
+                    result.record.operations.append((orig_src, dst))
+                escaped = html.escape(dst.name)
+                item.source_path = dst
+                item.new_name = dst.name
+                item.source_diff_html = escaped
+                item.diff_html = escaped
+                item.status = ItemStatus.RENAMED
+                item.error_message = ""
+                result.success_count += 1
+                if item.is_dir:
+                    dir_renames.append((orig_src, dst))
             except OSError as exc:
                 item.status = ItemStatus.ERROR
                 item.error_message = str(exc)
-                errors.append((src, str(exc)))
-        else:
-            temp_map.append((item, src, src, dst))
-
-    if errors:
-        # Roll back any temp renames we already did
-        for _item, orig_src, cur_path, _dst in reversed(temp_map):
-            if cur_path != orig_src and cur_path.exists():
-                try:
-                    cur_path.rename(orig_src)
-                except OSError:
-                    pass
-        result.errors = errors
-        return result
-
-    # Phase 2: move to final destination and update in-memory paths (including child paths if a parent dir renamed)
-    dir_renames: list[tuple[Path, Path]] = []
-
-    for item, orig_src, cur_path, dst in temp_map:
-        try:
-            cur_path.rename(dst)
-            if result.record is not None:
-                result.record.operations.append((orig_src, dst))
-            escaped = html.escape(dst.name)
-            item.source_path = dst
-            item.new_name = dst.name
-            item.source_diff_html = escaped
-            item.diff_html = escaped
-            item.status = ItemStatus.RENAMED
-            item.error_message = ""
-            result.success_count += 1
-            if item.is_dir:
-                dir_renames.append((orig_src, dst))
-        except OSError as exc:
-            item.status = ItemStatus.ERROR
-            item.error_message = str(exc)
-            result.errors.append((orig_src, str(exc)))
+                result.errors.append((orig_src, str(exc)))
 
     # If any directories were renamed, update source_path of descendant items in `items`
     if dir_renames:
         for item in items:
             for old_dir, new_dir in dir_renames:
-                if item.source_path != new_dir and old_dir in item.source_path.parents:
+                if (
+                    str(item.source_path) != str(new_dir)
+                    and old_dir in item.source_path.parents
+                ):
                     rel = item.source_path.relative_to(old_dir)
                     item.source_path = new_dir / rel
 
@@ -481,8 +541,9 @@ def undo_batch(record: BatchRecord, items: list[RenameItem] | None = None) -> Ba
 
     # Reverse the execution order (parents were renamed after children, so undo renames parents first!)
     dir_rewrites: list[tuple[Path, Path]] = []
+    needs_case_temp = sys.platform.startswith("win") or sys.platform == "darwin"
 
-    for orig_src, dst in reversed(record.operations):
+    for idx, (orig_src, dst) in enumerate(reversed(record.operations)):
         # Account for any parent directory that was already reverted in an earlier iteration
         actual_dst = dst
         actual_orig = orig_src
@@ -494,7 +555,25 @@ def undo_batch(record: BatchRecord, items: list[RenameItem] | None = None) -> Ba
 
         try:
             is_dir = actual_dst.is_dir()
-            actual_dst.rename(actual_orig)
+            is_case_only = (
+                needs_case_temp
+                and actual_dst.parent == actual_orig.parent
+                and actual_dst.name != actual_orig.name
+                and actual_dst.name.casefold() == actual_orig.name.casefold()
+            )
+            if is_case_only:
+                tmp = actual_dst.parent / f".namr_undo_tmp_{os.getpid()}_{idx}_{actual_dst.name}"
+                try:
+                    actual_dst.rename(tmp)
+                    tmp.rename(actual_orig)
+                except OSError:
+                    # Fallback to direct rename if temp file creation isn't allowed
+                    if tmp.exists():
+                        tmp.rename(actual_orig)
+                    else:
+                        actual_dst.rename(actual_orig)
+            else:
+                actual_dst.rename(actual_orig)
             result.success_count += 1
             if is_dir:
                 dir_rewrites.append((actual_dst, actual_orig))
@@ -503,13 +582,14 @@ def undo_batch(record: BatchRecord, items: list[RenameItem] | None = None) -> Ba
 
     if items is not None:
         # Refresh item source_paths that matched reverted operations
-        revert_map = {dst: orig_src for orig_src, dst in record.operations}
+        revert_map = {str(dst): orig_src for orig_src, dst in record.operations}
         for item in items:
             for dst_dir, orig_dir in dir_rewrites:
                 if dst_dir in item.source_path.parents:
                     item.source_path = orig_dir / item.source_path.relative_to(dst_dir)
-            if item.source_path in revert_map:
-                item.source_path = revert_map[item.source_path]
+            key = str(item.source_path)
+            if key in revert_map:
+                item.source_path = revert_map[key]
 
     return result
 

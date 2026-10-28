@@ -53,10 +53,13 @@ def main(argv: list[str] | None = None) -> int:
     # Prefer org.kde.desktop style on KDE Plasma, with cross-platform fallback
     if not os.environ.get("QT_QUICK_CONTROLS_STYLE"):
         if sys.platform.startswith("linux"):
+            QQuickStyle.setFallbackStyle("Fusion")
             QQuickStyle.setStyle("org.kde.desktop")
         elif sys.platform == "darwin":
+            QQuickStyle.setFallbackStyle("Fusion")
             QQuickStyle.setStyle("macOS")
         elif sys.platform.startswith("win"):
+            QQuickStyle.setFallbackStyle("Windows")
             QQuickStyle.setStyle("FluentWinUI3")
 
     app = QApplication(sys.argv)
@@ -66,7 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     app.setOrganizationDomain("bingus.fans")
     app.setApplicationVersion(__version__)
     app.setDesktopFileName(__app_id__)
-    app.setWindowIcon(QIcon.fromTheme(__app_id__, QIcon.fromTheme("edit-rename")))
+    local_svg = Path(__file__).resolve().parents[2] / "data" / f"{__app_id__}.svg"
+    fallback_icon = (
+        QIcon(str(local_svg)) if local_svg.is_file() else QIcon.fromTheme("edit-rename")
+    )
+    app.setWindowIcon(QIcon.fromTheme(__app_id__, fallback_icon))
 
     controller = RenamerController()
     if args.recursive:
@@ -76,14 +83,21 @@ def main(argv: list[str] | None = None) -> int:
 
     engine = QQmlApplicationEngine()
 
-    # Ensure system and Flatpak runtime QML modules (e.g. /usr/lib/qt6/qml on Arch,
-    # /usr/lib/*-linux-gnu/qml in org.kde.Platform Flatpak) are in the import path.
+    # Ensure system, Flatpak, Conda, Homebrew, and KDE Craft QML modules are in the import path.
+    prefix_path = Path(sys.prefix)
     qml_search_dirs = [
+        str(prefix_path / "lib" / "qml"),
+        str(prefix_path / "lib" / "qt6" / "qml"),
+        str(prefix_path / "Library" / "lib" / "qml"),
+        str(prefix_path / "Library" / "qml"),
+        str(prefix_path / "qml"),
         "/app/lib/qml",
         "/usr/lib/qml",
         "/usr/lib/qt6/qml",
         "/usr/lib64/qt6/qml",
         *glob.glob("/usr/lib/*-linux-gnu/qml"),
+        "/opt/homebrew/lib/qt6/qml",
+        "/usr/local/lib/qt6/qml",
     ]
     for sys_qml_dir in qml_search_dirs:
         if os.path.isdir(sys_qml_dir):
